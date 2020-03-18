@@ -2,6 +2,7 @@ const https=require("https");
 const http=require("http");
 const fs=require("fs");
 const assert=require("assert");
+const formData=require("form-data");
 const readline=require("readline").createInterface({input:process.stdin,output:process.stdout});
 readline.on("SIGINT",()=>{console.log();process.exit(0);});
 
@@ -59,8 +60,8 @@ function dbgrequest(opt,addt){
 	});
 }
 
-function upload(opt,addt,addfile,addt2){
-	console.log("%s https://%s%s",opt.method,opt.hostname,opt.path);
+function upload(opt,things){
+	console.log("Uploading: %s https://%s%s",opt.method,opt.hostname,opt.path);
 	return new Promise((done)=>{
 	if(!opt.headers)opt.headers={};
 	opt.headers.cookie=cookies;
@@ -76,12 +77,22 @@ function upload(opt,addt,addfile,addt2){
 					cookies.push(i);
 				}
 			}
+			//process.stdout.write("\033[M\rUploaded\n");
 			done(ad);
 		});
 	});
-	req.write(addt);
-	req.write(addfile);
-	req.write(addt);
+	/*const startDate=new Date();
+	for(let c=0;;c+=100){
+		if(c+100>=things.length){
+			req.write(things.slice(c));
+			process.stdout.write("\033[M\rUploading...\t"+(c/1024/1024).toFixed(2)+"MB/"+(things.length/1024/1024).toFixed(2)+"MB\tSpeed:"+((c/1024/1024)/((new Date()).getTime()/1000-startDate.getTime()/1000)).toFixed(2)+"MB/s");	
+			req.end();
+			break;
+		}
+		req.write(things.slice(c,c+100));
+		process.stdout.write("\033[M\rUploading...\t"+(c/1024/1024).toFixed(2)+"MB/"+(things.length/1024/1024).toFixed(2)+"MB\tSpeed:"+((c/1024/1024)/((new Date()).getTime()/1000-startDate.getTime()/1000)).toFixed(2)+"MB/s");	
+	}*/
+	req.write(things);
 	req.end();
 	});
 }
@@ -161,7 +172,7 @@ async function main_download(){
 			console.log("Incorrect Password!");
 		}
 	}
-	assert(detail.uploaded,"File isn't uploaded yet.");
+	assert(detail.uploaded,"File haven't uploaded yet.");
 	assert(!detail.deleted,"File is deleted.");
 	console.log("\n\nFiles:");
 	for(let i in detail.transferFileDtos){
@@ -181,8 +192,8 @@ async function main_download(){
 	console.log("Download link: "+dlink.link);
 	console.log("Start to download");
 	let file=await download(dlink.link,ref);
-	fs.writeFileSync(detail.transferFileDtos[id].fileName,file);
-	console.log("Saved as: "+detail.transferFileDtos[id].fileName);
+	fs.writeFileSync(process.argv[4]?process.argv[4]:detail.transferFileDtos[id].fileName,file);
+	console.log("Saved as: "+process.argv[4]?process.argv[4]:detail.transferFileDtos[id].fileName);
 	process.exit(0);
 }
 
@@ -193,29 +204,61 @@ async function main_upload(){
 	await get("https://cowtransfer.com/");
 	const boundary="---------------------------18876515039264306831201553372";
 	//const boundary="---------------------------13751607859746247381445938631";
-	let preparesend=await request({method:"POST",hostname:"cowtransfer.com",path:"/transfer/preparesend",headers:{"Content-Type":"multipart/form-data; boundary="+boundary}},
-		boundary+"\r\nContent-Disposition: form-data; name=\"orderGuid\"\r\n\r\n\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"totalSize\"\r\n\r\n"+file.length+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\nzh-cn\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"notifyEmail\"\r\n\r\n\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"enableShareToOthers\"\r\n\r\nfalse\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"prepareSendFileDtos[0].fileName\"\r\n\r\n"+fn+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"prepareSendFileDtos[0].size\"\r\n\r\n"+file.length+"\r\n"+boundary+"--");
+	let psForm=new formData();
+	psForm.append("totalSize",file.length);
+	psForm.append("message","");
+	psForm.append("notifyEmail","");
+	psForm.append("validDays",7);
+	psForm.append("saveToMyCloud","false");
+	psForm.append("downloadTimes",-1);
+	psForm.append("smsReceivers","");
+	psForm.append("emailReceivers","");
+	psForm.append("enableShareToOthers","false");
+	let preparesend=await request({method:"POST",hostname:"cowtransfer.com",path:"/transfer/preparesend",headers:psForm.getHeaders()},
+		psForm.getBuffer());
 	preparesend=JSON.parse(preparesend);
 	preparesend.miniappqrcode="(ignored)";
 	console.log(preparesend);
 	if(preparesend.error)throw preparesend.error_message;
 	let fileId=fn+"-"+(new Date()).getTime();
-	let beforeupload=await request({method:"POST",hostname:"cowtransfer.com",path:"/transfer/beforeupload",headers:{"Referer":"https://cowtransfer.com","Content-Type":"multipart/form-data; boundary="+boundary}},
-		boundary+"\r\nContent-Disposition: form-data; name=\"type\"\r\n\r\napplication/zip\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"fileId\"\r\n\r\n"+fileId+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"fileName\"\r\n\r\n"+fn+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"fileSize\"\r\n\r\n"+file.length+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"transferGuid\"\r\n\r\n"+preparesend.transferguid+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"storagePrefix\"\r\n\r\nanonymous\r\n"+boundary+"--\r\n");
+	let buForm=new formData();
+	buForm.append("type","");
+	buForm.append("fileId","");
+	buForm.append("fileName",fn);
+	buForm.append("fileSize",file.length);
+	buForm.append("transferGuid",preparesend.transferguid);
+	buForm.append("storagePrefix","anonymous");
+	let bfHeaders=buForm.getHeaders();
+	bfHeaders["Referer"]="https://cowtransfer.com";
+	let beforeupload=await request({method:"POST",hostname:"cowtransfer.com",path:"/transfer/beforeupload",headers:bfHeaders},
+		buForm.getBuffer());
 	beforeupload=JSON.parse(beforeupload);
 	console.log(beforeupload);
-	let uploadres=await upload({method:"POST",headers:{"Content-Type":"multipart/form-data; boundary="+boundary},hostname:"upload.qiniup.com",path:"/"},
-		boundary+"\r\nContent-Disposition: form-data; name=\"file\"; filename=\""+fn+"\"\r\nContent-Type: octet-stream\r\n\r\n",
-		file,
-		"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"token\"\r\n\r\n"+preparesend.uptoken+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"key\"\r\n\r\nanonymous/"+preparesend.transferguid+"/"+fn+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"fname\"\r\n\r\n"+fn+"\r\n"+boundary+"--");
-	let uploaded=await request({method:"POST",headers:{"Content-Type":"multipart/form-data; boundary="+boundary},hostname:"cowtransfer.com",path:"/transfer/uploaded"},
-		boundary+"\r\nContent-Disposition: form-data; name=\"fileId\"\r\n\r\n"+fileId+"\r\n"+boundary+"\r\nContent-Disposition: form-data; name=\"transferGuid\"\r\n\r\n"+preparesend.transferguid+"\r\n"+boundary+"--");
+	let urForm=new formData();
+	urForm.append("file",file,{filename:fn,contentType:"application/octet-stream",knownLength: file.length});
+	urForm.append("token",preparesend.uptoken);
+	urForm.append("key",`anonymous/${preparesend.transferguid}/${fn}`);
+	urForm.append("fname",fn);
+	let uploadres=await upload({method:"POST",headers:urForm.getHeaders(),hostname:"upload.qiniup.com",path:"/"},
+		urForm.getBuffer());
+	console.log(uploadres);
+	let udForm=new formData();
+	udForm.append("fileId","");
+	udForm.append("transferGuid",preparesend.transferguid);
+	let uploaded=await request({method:"POST",headers:udForm.getHeaders(),hostname:"cowtransfer.com",path:"/transfer/uploaded"},
+		udForm.getBuffer());
 	console.log(uploaded);
-	console.log("Upload is done.\nDownload link: %s\nExpire At %d days.",preparesend.uniqueurl,beforeupload.expireAt);
+	let cpt=new formData();
+	cpt.append("transferGuid",preparesend.transferguid);
+	let complete=await request({method:"POST",headers:cpt.getHeaders(),hostname:"cowtransfer.com",path:"/transfer/complete"},
+		cpt.getBuffer());
+	console.log(complete);
+	console.log("File successfully uploaded.\nDownload link: %s\nExpires after %d days.",preparesend.uniqueurl,beforeupload.expireAt);
 	process.exit(0);
 }
 
 if(process.argv[2]=="d")main_download();
+else if(process.argv[2]=="u")main_upload();
 else{
 	console.log("No such method\nMethods: d <link>");
 	process.exit(1);
