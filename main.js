@@ -5,6 +5,7 @@ const assert=require("assert");
 const formData=require("form-data");
 const readline=require("readline").createInterface({input:process.stdin,output:process.stdout});
 readline.on("SIGINT",()=>{console.log();process.exit(0);});
+let greferer;
 
 let cookies=[];
 function request(opt,addt){
@@ -12,6 +13,8 @@ function request(opt,addt){
 	return new Promise((done)=>{
 	if(!opt.headers)opt.headers={};
 	opt.headers.cookie=cookies;
+	opt.headers["Origin"]="https://cowtransfer.com";
+	opt.headers["Referer"]=greferer;
 	opt.headers["Accept"]="application/json";
 	if(addt)opt.headers["Content-Length"]=addt.length;
 	opt.headers["User-Agent"]="Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0";
@@ -65,6 +68,8 @@ function upload(opt,things){
 	return new Promise((done)=>{
 	if(!opt.headers)opt.headers={};
 	opt.headers.cookie=cookies;
+	opt.headers["Origin"]="https://cowtransfer.com";
+	opt.headers["Referer"]="https://cowtransfer.com/";
 	opt.headers["Accept"]="application/json";
 	opt.headers["Accept-Language"]="en-US,en;q=0.5";
 	opt.headers["User-Agent"]="Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0";
@@ -103,6 +108,7 @@ function download(url,referer){
 	let opt={};
 	opt.headers={};
 	opt.headers.cookie=cookies;
+	opt.headers["Origin"]="https://cowtransfer.com";
 	opt.headers["Referer"]=referer;
 	opt.headers["Accept"]="application/json";
 	opt.headers["User-Agent"]="Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0";
@@ -131,6 +137,7 @@ function get(url){
 	let opt={};
 	opt.headers={};
 	opt.headers.cookie=cookies;
+	opt.headers["Referer"]=greferer;
 	opt.headers["Accept"]="application/json";
 	opt.headers["User-Agent"]="Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0";
 	https.get(url,opt,(res)=>{
@@ -158,6 +165,9 @@ async function main_download(){
 	url=url.split("s/");
 	url=url[url.length-1];
 	let ref="https://cowtransfer.com/s/"+url;
+	greferer="";
+	await get(ref);
+	greferer=ref;
 	console.log("https://cowtransfer.com/transfer/transferdetail?url="+url);
 	let detail=await get("https://cowtransfer.com/transfer/transferdetail?url="+url);
 	detail=JSON.parse(detail);
@@ -172,7 +182,7 @@ async function main_download(){
 			console.log("Incorrect Password!");
 		}
 	}
-	assert(detail.uploaded,"File haven't uploaded yet.");
+	//assert(detail.uploaded,"File haven't uploaded yet.");
 	assert(!detail.deleted,"File is deleted.");
 	console.log("\n\nFiles:");
 	for(let i in detail.transferFileDtos){
@@ -193,7 +203,7 @@ async function main_download(){
 	console.log("Start to download");
 	let file=await download(dlink.link,ref);
 	fs.writeFileSync(process.argv[4]?process.argv[4]:detail.transferFileDtos[id].fileName,file);
-	console.log("Saved as: "+process.argv[4]?process.argv[4]:detail.transferFileDtos[id].fileName);
+	console.log("Saved as:",process.argv[4]?process.argv[4]:detail.transferFileDtos[id].fileName);
 	process.exit(0);
 }
 
@@ -201,9 +211,9 @@ async function main_upload(){
 	let fn=process.argv[3];
 	let file=fs.readFileSync(fn);
 	fn=fn.replace(/ |\ufffd/g, "_");
+	greferer="";
 	await get("https://cowtransfer.com/");
-	const boundary="---------------------------18876515039264306831201553372";
-	//const boundary="---------------------------13751607859746247381445938631";
+	greferer="https://cowtransfer.com/";
 	let psForm=new formData();
 	psForm.append("totalSize",file.length);
 	psForm.append("message","");
@@ -214,6 +224,7 @@ async function main_upload(){
 	psForm.append("smsReceivers","");
 	psForm.append("emailReceivers","");
 	psForm.append("enableShareToOthers","false");
+	psForm.append("language","cn");
 	let preparesend=await request({method:"POST",hostname:"cowtransfer.com",path:"/transfer/preparesend",headers:psForm.getHeaders()},
 		psForm.getBuffer());
 	preparesend=JSON.parse(preparesend);
@@ -225,6 +236,7 @@ async function main_upload(){
 	buForm.append("type","");
 	buForm.append("fileId","");
 	buForm.append("fileName",fn);
+	buForm.append("originalName",fn);
 	buForm.append("fileSize",file.length);
 	buForm.append("transferGuid",preparesend.transferguid);
 	buForm.append("storagePrefix","anonymous");
@@ -253,13 +265,13 @@ async function main_upload(){
 	let complete=await request({method:"POST",headers:cpt.getHeaders(),hostname:"cowtransfer.com",path:"/transfer/complete"},
 		cpt.getBuffer());
 	console.log(complete);
-	console.log("File successfully uploaded.\nDownload link: %s\nExpires after %d days.",preparesend.uniqueurl,beforeupload.expireAt);
+	console.log("File successfully uploaded.\nDownload link: %s\nExpire at %s.",preparesend.uniqueurl,preparesend.expireAt);
 	process.exit(0);
 }
 
 if(process.argv[2]=="d")main_download();
 else if(process.argv[2]=="u")main_upload();
 else{
-	console.log("No such method\nMethods: d <link>");
+	console.log("No such method\nMethods: d <link> [path]\nu <filename>");
 	process.exit(1);
 }
