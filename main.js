@@ -179,7 +179,7 @@ async function main_download(){
 		detail.miniAppQrCode="(ignored)";		
 		console.log(detail);
 		if(detail.needPassword){
-			console.log("Incorrect Password!");
+			console.log("Incorrect password!");
 		}
 	}
 	//assert(detail.uploaded,"File haven't uploaded yet.");
@@ -190,7 +190,7 @@ async function main_download(){
 	}
 	let id;
 	if(detail.transferFileDtos.length>1){
-		id=parseInt(await readl("What file you need to download?(input File ID): "));
+		id=parseInt(await readl("Which file to download?(input File ID): "));
 	}else{
 		id=0;
 	}
@@ -200,7 +200,7 @@ async function main_download(){
 	dlink=JSON.parse(dlink);
 	console.log(dlink);
 	console.log("Download link: "+dlink.link);
-	console.log("Start to download");
+	console.log("Starting download");
 	let file=await download(dlink.link,ref);
 	fs.writeFileSync(process.argv[4]?process.argv[4]:detail.transferFileDtos[id].fileName,file);
 	console.log("Saved as:",process.argv[4]?process.argv[4]:detail.transferFileDtos[id].fileName);
@@ -265,13 +265,13 @@ async function main_upload(){
 	let complete=await request({method:"POST",headers:cpt.getHeaders(),hostname:"cowtransfer.com",path:"/transfer/complete"},
 		cpt.getBuffer());
 	console.log(complete);
-	console.log("File successfully uploaded.\nDownload link: %s\nExpire at %s.",preparesend.uniqueurl,preparesend.expireAt);
+	console.log("File uploaded successfully.\nDownload link: %s\nExpire at %s.",preparesend.uniqueurl,preparesend.expireAt);
 	process.exit(0);
 }
 
 if(process.argv[2]=="d")main_download();
 else if(process.argv[2]=="u")main_upload();
 else{
-	console.log("No such method\nMethods: d <link> [path]\nu <filename>");
+	console.log("No such method.\nMethods: d <link> [path]\nu <filename>");
 	process.exit(1);
 }
